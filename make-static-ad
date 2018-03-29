@@ -1,0 +1,119 @@
+#!/bin/bash
+
+#navigate to the working folder
+cd "$PWD"
+# define an array
+foo=()
+# find all jpg and put them into the array
+while IFS= read -r -d $'\0'; do
+    foo+=("$REPLY")
+done < <(find . -d 1 -name "*.jpg" -type f -print0)
+# find all png and put them into the array
+while IFS= read -r -d $'\0'; do
+    foo+=("$REPLY")
+done < <(find . -d 1 -name "*.png" -type f -print0)
+# find all jpeg and put them into the array
+while IFS= read -r -d $'\0'; do
+    foo+=("$REPLY")
+done < <(find . -d 1 -name "*.jpeg" -type f -print0)
+# the array must contain at leats one item
+if [ ${#foo[@]} -eq 0 ]
+  then
+    echo "[Error] cannot find any images!" 1>&2
+    exit 1
+fi
+# function that returns HTML
+getHTML() {
+  string='<!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title></title>
+      <script src="https://secure-ds.serving-sys.com/BurstingScript/EBLoader.js"></script>
+      <style>
+        html,
+        body {
+          margin: 0;
+          padding: 0;
+        }
+        img {
+          margin: 0;
+          padding: 0;
+          display: block;
+          width: '"$1"'px;
+          height: '"$2"'px;
+          cursor: pointer;
+        }
+      </style>
+    </head>
+    <body>
+      <img src="banner.jpg">
+      <script>
+        window.addEventListener("load", function() {
+          if (!EB.isInitialized())
+            EB.addEventListener(EBG.EventName.EB_INITIALIZED, init);
+          else
+            init();
+        });
+        function init() {
+          document.getElementsByTagName("img")[0].addEventListener("click", function() {
+            console.log("click");
+            EB.clickthrough();
+          });
+        }
+      </script>
+    </body>
+    </html>'
+  echo "$string"
+}
+# clean file name from a path and an extension
+for f in "${foo[@]}"
+do
+  # get its base name
+  filename=$(basename "$f")
+  # get an extension
+  extension="${filename##*.}"
+  # get a file name without an extension
+  filename="${filename%.*}"
+  # create a folder
+  mkdir "$filename"
+  # move the file into its own folder
+  mv "$f" "./$filename/banner.$extension"
+  # navigate into the new folder
+  cd "$filename"
+  # convert to jpg if it is not jpg
+  if [ "$extension" != "jpg" ]
+    then
+      magick convert "banner.$extension" "banner.jpg"
+      rm "banner.$extension"
+  fi
+  # create a copy named default
+  cp "banner.jpg" "default.jpg"
+  # resize the default image
+  magick mogrify -resize 50% "default.jpg"
+  # get size
+  w=$(magick identify -format '%w' "default.jpg")
+  h=$(magick identify -format '%h' "default.jpg")
+  # create HTML
+  string=$( getHTML $w $h )
+  # save as a new HTML file
+  echo $string >> "index.html"
+  # optimize both images
+  magick convert "banner.jpg" -strip -define jpeg:extent=100KB "banner.jpg"
+  magick convert "default.jpg" -strip -define jpeg:extent=50KB "default.jpg"
+  # navigate back
+  cd "../"
+  # define a prefix
+  prefix=""
+  if [ ! -z "$1" ]
+    then
+      prefix="$1"
+  fi
+  # rename the folder according to the size of the default image and supply it with a prefix
+  mv "$filename" "$prefix${w}x${h}"
+done
+# zip all new created folder
+find . -type d -d 1 -exec zip -r {} {} ";"
+# notify about success
+echo "Done"
