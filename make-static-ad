@@ -67,7 +67,7 @@ getHTML() {
     </html>'
   echo "$string"
 }
-# clean file name from a path and an extension
+# iterate over the images
 for f in "${foo[@]}"
 do
   # get its base name
